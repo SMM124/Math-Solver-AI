@@ -254,7 +254,7 @@
             };
 
             return (
-                <div className="my-4 rounded-xl overflow-hidden border shadow-sm transition-all duration-200 hover:shadow-md border-gray-200 dark:border-gray-700">
+                <div className="my-4 rounded-xl overflow-hidden border shadow-sm transition-all duration-200 hover:shadow-md border-gray-200 dark:border-gray-700 w-full max-w-[50rem]">
                     {/* Code Header */}
                     <div className={`flex items-center justify-between px-4 py-2 border-b ${isDarkMode ? 'bg-slate-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
                         <span className={`text-xs font-bold uppercase font-mono tracking-wider ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -278,8 +278,8 @@
                             )}
                         </button>
                     </div>
-                    {/* Code Body */}
-                    <pre className={`relative m-0 p-4 overflow-x-auto custom-scrollbar ${isUserMessage ? 'bg-black/20 text-white' : (isDarkMode ? 'bg-slate-900 text-indigo-300' : 'bg-gray-50 text-indigo-700')}`}>
+                    {/* Code Body - Updated with max-h-[22.5rem] (approx 90) for smaller height */}
+                    <pre className={`relative m-0 p-4 overflow-x-auto custom-scrollbar max-h-[22.5rem] ${isUserMessage ? 'bg-black/20 text-white' : (isDarkMode ? 'bg-slate-900 text-indigo-300' : 'bg-gray-50 text-indigo-700')}`}>
                         <code className="text-sm font-mono leading-relaxed whitespace-pre">
                             {children}
                         </code>
@@ -289,11 +289,13 @@
         };
 
         // --- REUSABLE MARKDOWN COMPONENTS FOR CONSISTENT STYLING ---
-        const getMarkdownComponents = (isDarkMode, isUserMessage) => {
+        const getMarkdownComponents = (isDarkMode, isUserMessage, isError = false) => {
             // Helper to determine text color
-            const textColor = isUserMessage 
-                ? 'text-white/95' 
-                : (isDarkMode ? 'text-slate-300' : 'text-slate-700');
+            const textColor = isError 
+                ? 'text-red-500 font-bold' 
+                : (isUserMessage 
+                    ? 'text-white/95' 
+                    : (isDarkMode ? 'text-slate-300' : 'text-slate-700'));
             
             const headingColor = isUserMessage
                 ? 'text-white'
@@ -334,12 +336,19 @@
         };
 
         // --- Helper Component to Render Text mixed with Math ---
-        const TextWithMath = ({ content, isDarkMode, isUserMessage }) => {
+        const TextWithMath = ({ content, isDarkMode, isUserMessage, isError }) => {
             const parts = content.split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
-            const markdownComponents = getMarkdownComponents(isDarkMode, isUserMessage);
+            
+            // FIX: Use a modified component map that renders 'p' as 'span'
+            // This prevents line breaks between text and inline math expressions
+            const baseComponents = getMarkdownComponents(isDarkMode, isUserMessage, isError);
+            const inlineMarkdownComponents = {
+                ...baseComponents,
+                p: ({node, ...props}) => <span {...props} />
+            };
             
             return (
-                <>
+                <span>
                     {parts.map((part, index) => {
                         if (part.startsWith('$$') && part.endsWith('$$')) {
                             return <BlockMath key={index} math={part.slice(2, -2)} />;
@@ -347,16 +356,16 @@
                             return <InlineMath key={index} math={part.slice(1, -1)} />;
                         } else {
                             return (
-                                <ReactMarkdown
-                                    key={index}
-                                    components={markdownComponents}
+                                <ReactMarkdown 
+                                    key={index} 
+                                    components={inlineMarkdownComponents}
                                 >
                                     {part}
                                 </ReactMarkdown>
                             );
                         }
                     })}
-                </>
+                </span>
             );
         };
 
@@ -410,7 +419,7 @@
             );
         };
 
-        const MarkdownRenderer = ({ content, isDarkMode, fontSize, isUserMessage }) => {
+        const MarkdownRenderer = ({ content, isDarkMode, fontSize, isUserMessage, isError }) => {
             useKatexStyles();
             
             const fontSizeClass = {
@@ -419,7 +428,7 @@
                 'large': 'text-lg'
             }[fontSize] || 'text-base';
 
-            const markdownComponents = getMarkdownComponents(isDarkMode, isUserMessage);
+            const markdownComponents = getMarkdownComponents(isDarkMode, isUserMessage, isError);
 
             const renderContent = () => {
                 if (content.startsWith('data:image/') || (content.startsWith('http') && (content.endsWith('.png') || content.endsWith('.jpg') || content.endsWith('.jpeg')))) {
@@ -455,7 +464,7 @@
                                 if (part.match(/\|[-:| ]+\|/)) {
                                     return <SimpleTable key={tIndex} content={part} isDarkMode={isDarkMode} />;
                                 }
-                                return <TextWithMath key={tIndex} content={part} isDarkMode={isDarkMode} isUserMessage={isUserMessage} />;
+                                return <TextWithMath key={tIndex} content={part} isDarkMode={isDarkMode} isUserMessage={isUserMessage} isError={isError} />;
                             })}
                         </span>
                     );
@@ -504,8 +513,8 @@
                         />
                     </circle>
 
-                     {/* Orbiting Particle 2 (Delayed) */}
-                     <circle r="3" fill="#A5B4FC">
+                      {/* Orbiting Particle 2 (Delayed) */}
+                      <circle r="3" fill="#A5B4FC">
                         <animateMotion 
                             dur="4s" 
                             begin="2s"
@@ -1036,9 +1045,20 @@
 
             const isImageGenerationRequest = (text) => {
                 const lower = text.toLowerCase().trim();
-                const enKeywords = ['draw', 'create image', 'generate image', 'make a picture', 'show me a picture of'];
-                const bnKeywords = ['ছবি আঁক', 'ছবি তৈরি', 'ছবি বানাও', 'ছবি দেখাও'];
-                return enKeywords.some(keyword => lower.startsWith(keyword)) || bnKeywords.some(keyword => lower.includes(keyword));
+                // Enhanced keywords for better detection
+                const enKeywords = [
+                    'draw', 'paint', 'sketch', 
+                    'create image', 'generate image', 
+                    'make a picture', 'show me a picture',
+                    'create a picture', 'generate a picture'
+                ];
+                const bnKeywords = [
+                    'ছবি আঁক', 'ছবি আঁকো', 'ছবি তৈরি', 
+                    'ছবি বানাও', 'ছবি দেখাও', 'আঁক', 'আঁকো'
+                ];
+                
+                // Changed from startsWith to includes for more natural conversation
+                return enKeywords.some(keyword => lower.includes(keyword)) || bnKeywords.some(keyword => lower.includes(keyword));
             }
 
             const handleSendMessage = async (text, isRegeneration = false) => {
@@ -1132,62 +1152,45 @@
                     setLoadingState('idle');
                     const errorMessage = { 
                         role: 'model', 
-                        content: "API Key is missing. Please configure it in Settings.", 
-                        timestamp: Date.now() 
+                        content: "API not found. Please set a valid API key.", // UPDATED ERROR MESSAGE
+                        timestamp: Date.now(),
+                        isError: true // Add error flag
                     };
-                    setMessages(prev => [...prev, errorMessage]);
-                    // setShowSettings(true); // REMOVED as requested
+                    
+                    // FIX: Save error message to Firestore so it persists and survives snapshot updates
+                    try {
+                        if (activeChatId) {
+                            const chatDocRef = doc(db, 'users', currentUser.uid, 'chats', activeChatId);
+                            await updateDoc(chatDocRef, {
+                                messages: arrayUnion(errorMessage),
+                                lastUpdated: serverTimestamp()
+                            });
+                        }
+                    } catch (error) {
+                        console.error("Error saving error message:", error);
+                        // Fallback to local state if DB fails (though DB shouldn't fail if user msg succeeded)
+                        setMessages(prev => [...prev, errorMessage]); 
+                    }
                     return;
                 }
 
                 if (isImageGenerationRequest(query) && attachmentsForApi.length === 0) {
-                    setLoadingState('drawing');
+                    setLoadingState('idle');
+                    const refusalMsg = { 
+                        role: 'model', 
+                        content: "দুঃখিত, কারিগরি সীমাবদ্ধতার কারণে আমি বর্তমানে ছবি তৈরি করতে পারছি না। দয়া করে গাণিতিক সমস্যা বা অন্য কোনো প্রশ্ন জিজ্ঞাসা করুন।", 
+                        timestamp: Date.now() 
+                    };
+                    
+                    setMessages(prev => [...prev, refusalMsg]);
+                    
                     try {
-                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${activeApiKey}`;
-                        // FIX: Using standard payload format for predict
-                        const payload = { instances: [{ prompt: query }], parameters: { sampleCount: 1 } };
-                        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                        
-                        if (!response.ok) {
-                                let errorMsg = "Image generation failed.";
-                                try { 
-                                    const errorBody = await response.json(); 
-                                    // Improve error extraction
-                                    errorMsg = errorBody.error?.message || errorBody.message || response.statusText; 
-                                } catch (e) {
-                                    errorMsg = response.statusText || "Unknown Error";
-                                }
-                                
-                                console.error("API Error Details:", errorMsg); // Log for debugging
-
-                                if (errorMsg.toLowerCase().includes('policy') || errorMsg.toLowerCase().includes('safety')) 
-                                    throw new Error("দুঃখিত, আমি এই ধরনের ছবি তৈরি করতে পারছি না। এটি নিরাপত্তা নীতির বাইরে।");
-                                
-                                // Handle Billing Error Gracefully
-                                if (errorMsg.toLowerCase().includes('billed') || errorMsg.toLowerCase().includes('billing') || errorMsg.includes('403'))
-                                    throw new Error("দুঃখিত, ছবি তৈরির জন্য Google Cloud-এ বিলিং অ্যাকাউন্ট চালু থাকা প্রয়োজন। আপনার API Key টি ফ্রী টিয়ারের হতে পারে।");
-
-                                // Show the actual error to help debugging (e.g., "API key not valid" or "Model not found")
-                                throw new Error(`ছবি তৈরিতে সমস্যা: ${errorMsg}`);
-                        }
-                        const data = await response.json();
-                        if (data.predictions && data.predictions[0]?.bytesBase64Encoded) {
-                            const imageUrl = `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
-                            const newModelMessage = { role: 'model', content: imageUrl, isImage: true, timestamp: Date.now() };
+                        if (activeChatId) {
                             const chatDocRef = doc(db, 'users', currentUser.uid, 'chats', activeChatId);
-                            await updateDoc(chatDocRef, { messages: arrayUnion(newModelMessage), lastUpdated: serverTimestamp() });
-                        } else {
-                                throw new Error("দুঃখিত, আমি এই অনুরোধটি প্রক্রিয়া করতে পারছি না। এটি আমাদের নিরাপত্তা নীতির বাইরে হতে পারে।");
+                            await updateDoc(chatDocRef, { messages: arrayUnion(refusalMsg), lastUpdated: serverTimestamp() });
                         }
-                    } catch (error) {
-                        console.error("Image Gen Error:", error);
-                        // Clean up error message for display
-                        let displayMsg = String(error.message).replace('Error: ', '');
-                        const errorModelMessage = { role: 'model', content: displayMsg, isImage: false, timestamp: Date.now() };
-                        const chatDocRef = doc(db, 'users', currentUser.uid, 'chats', activeChatId);
-                        await updateDoc(chatDocRef, { messages: arrayUnion(errorModelMessage), lastUpdated: serverTimestamp() });
-                    } finally {
-                        setLoadingState('idle');
+                    } catch (e) {
+                        console.error("Error saving refusal:", e);
                     }
                     return;
                 }
@@ -1204,6 +1207,14 @@
 
             const callTextModel = async (query, attachmentsForApi, apiKey, history, isRegeneration, activeChatId) => {
                 let newModelMessage = { role: 'model', content: "Something went wrong.", isImage: false, timestamp: Date.now() }; 
+                
+                const maxRetries = 3;
+                let retryCount = 0;
+                let response = null;
+
+                // Helper delay function
+                const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
                 try {
                     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
                     
@@ -1268,17 +1279,33 @@
                         ]
                     };
 
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
+                    while (retryCount < maxRetries) {
+                        try {
+                            response = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            });
+
+                            if (response.status === 503) {
+                                console.warn(`API 503 Overloaded. Retrying attempt ${retryCount + 1}...`);
+                                retryCount++;
+                                await delay(Math.pow(2, retryCount) * 1000); // 2s, 4s, 8s
+                                continue;
+                            }
+                            
+                            break; // Exit loop if not 503
+                        } catch (netError) {
+                             // Network errors might also warrant a retry, but sticking to 503 for now as requested
+                             throw netError;
+                        }
+                    }
 
                     if (readingTimeoutRef.current) clearTimeout(readingTimeoutRef.current);
 
-                    if (!response.ok) {
-                        const errorBody = await response.json();
-                        throw new Error(`API Error (${response.status}): ${errorBody.error?.message || 'Unknown error'}`);
+                    if (!response || !response.ok) {
+                        const errorBody = response ? await response.json() : {};
+                        throw new Error(`API Error (${response ? response.status : 'Unknown'}): ${errorBody.error?.message || 'Unknown error'}`);
                     }
 
                     const data = await response.json();
@@ -1787,9 +1814,16 @@
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex gap-4 md:gap-6 ${msg.role === 'user' ? 'justify-end' : ''} animate-slide-up`}>
                             {msg.role === 'model' && <div className={`w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center shadow-lg overflow-hidden ${isDarkMode ? 'bg-slate-900 border border-white/10' : 'bg-white border border-black/5'}`}><MathSolverAILogo size={40} /></div>}
-                            <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : ''}`}>
-                                <div className={`px-5 py-3 md:px-6 md:py-4 w-fit rounded-[2rem] shadow-sm relative overflow-hidden ${msg.role === 'user' ? (isDarkMode ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-br-none shadow-indigo-500/20 ml-auto' : 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-br-none shadow-indigo-500/20 ml-auto') : (isDarkMode ? 'bg-slate-900/80 text-slate-200 border border-white/5 rounded-bl-none' : 'bg-white text-slate-800 border border-gray-100 shadow-sm rounded-bl-none')}`}>
-                                    <MarkdownRenderer content={msg.content} isDarkMode={isDarkMode} fontSize={fontSize} isUserMessage={msg.role === 'user'} />
+                            <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : (msg.role === 'model' ? 'w-full max-w-full md:max-w-[85%]' : '')}`}>
+                                <div className={`px-5 py-3 md:px-6 md:py-4 w-fit rounded-[2rem] shadow-sm relative overflow-hidden ${
+                                    msg.role === 'user' 
+                                        ? (isDarkMode ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-br-none shadow-indigo-500/20 ml-auto' : 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-br-none shadow-indigo-500/20 ml-auto') 
+                                        : (isDarkMode ? 
+                                            // AI Message Logic: Mobile (Transparent, No Border) vs Desktop (Bubble)
+                                            'bg-transparent md:bg-slate-900/80 text-slate-200 md:border md:border-white/5 rounded-bl-none shadow-none md:shadow-sm p-0 md:px-6 md:py-4' 
+                                            : 'bg-transparent md:bg-white text-slate-800 md:border md:border-gray-100 shadow-none md:shadow-sm rounded-bl-none p-0 md:px-6 md:py-4')
+                                }`}>
+                                    <MarkdownRenderer content={msg.content} isDarkMode={isDarkMode} fontSize={fontSize} isUserMessage={msg.role === 'user'} isError={msg.isError} />
                                     {msg.isImage && msg.role === 'model' && (
                                         <div className="mt-4 flex justify-end">
                                             <button onClick={() => handleDownloadImage(msg.content)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors active:scale-95 shadow-sm ${isDarkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
@@ -1816,13 +1850,13 @@
                                         </div>
                                     )}
                                     <div className="flex items-center gap-4 opacity-100 transition-opacity duration-300">
-                                        <div className={`flex items-center gap-1 p-1 rounded-full ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-100'}`}>
-                                            <button onClick={() => handleFeedback(idx, 'up')} className={`p-1.5 rounded-full transition-colors active:scale-90 ${feedbacks[idx] === 'up' ? 'text-green-500 bg-green-500/10' : (isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-500')}`}><ThumbsUp className="w-4 h-4" /></button>
-                                            <div className={`w-px h-3 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-300'}`}></div>
-                                            <button onClick={() => handleFeedback(idx, 'down')} className={`p-1.5 rounded-full transition-colors active:scale-90 ${feedbacks[idx] === 'down' ? 'text-red-500 bg-red-500/10' : (isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-500')}`}><ThumbsDown className="w-4 h-4" /></button>
-                                        </div>
-                                        <button onClick={() => handleCopy(msg.content, idx)} className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{copiedMessageId === idx ? <><Check className="text-green-500 w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}</button>
-                                        {idx === messages.length - 1 && loadingState === 'idle' && <button onClick={() => handleSendMessage(null, true)} className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><RefreshCw className="w-3.5 h-3.5" /> Regenerate</button>}
+                                            <div className={`flex items-center gap-1 p-1 rounded-full ${isDarkMode ? 'bg-slate-900/50' : 'bg-gray-100'}`}>
+                                                <button onClick={() => handleFeedback(idx, 'up')} className={`p-1.5 rounded-full transition-colors active:scale-90 ${feedbacks[idx] === 'up' ? 'text-green-500 bg-green-500/10' : (isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-500')}`}><ThumbsUp className="w-4 h-4" /></button>
+                                                <div className={`w-px h-3 ${isDarkMode ? 'bg-slate-700' : 'bg-gray-300'}`}></div>
+                                                <button onClick={() => handleFeedback(idx, 'down')} className={`p-1.5 rounded-full transition-colors active:scale-90 ${feedbacks[idx] === 'down' ? 'text-red-500 bg-red-500/10' : (isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-500')}`}><ThumbsDown className="w-4 h-4" /></button>
+                                            </div>
+                                            <button onClick={() => handleCopy(msg.content, idx)} className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{copiedMessageId === idx ? <><Check className="text-green-500 w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}</button>
+                                            {idx === messages.length - 1 && loadingState === 'idle' && <button onClick={() => handleSendMessage(null, true)} className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><RefreshCw className="w-3.5 h-3.5" /> Regenerate</button>}
                                     </div>
                                     </div>
                                 )}
@@ -1934,4 +1968,5 @@
         root.render(<App />);
     </script>
 </body>
+
 </html>
